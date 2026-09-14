@@ -1,0 +1,19 @@
+{
+  "name": "imeta",
+  "version": "0.1.0",
+  "description": "Read width, height and EXIF orientation from PNG and JPEG files, no dependencies.",
+  "type": "module",
+  "bin": {
+    "imeta": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/*.test.js"
+  },
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^20.14.0"
+  }
+}
