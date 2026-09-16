@@ -1,4 +1,4 @@
-export type ImageFormat = 'png' | 'jpeg';
+export type ImageFormat = 'png' | 'jpeg' | 'webp';
 
 export interface ImageMetadata {
   format: ImageFormat;
@@ -31,6 +31,13 @@ export function readImageMetadata(buf: Buffer): ImageMetadata {
   if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xd8) {
     return parseJpeg(buf);
   }
+  if (
+    buf.length >= 12 &&
+    buf.toString('ascii', 0, 4) === 'RIFF' &&
+    buf.toString('ascii', 8, 12) === 'WEBP'
+  ) {
+    return parseWebp(buf);
+  }
   throw new UnsupportedFormatError();
 }
 
@@ -49,6 +56,55 @@ function parsePng(buf: Buffer): ImageMetadata {
     width: buf.readUInt32BE(16),
     height: buf.readUInt32BE(20),
   };
+}
+
+// A WEBP file is a RIFF container holding exactly one of three chunk types,
+// each of which encodes width/height differently. VP8X (the "extended"
+// header, used for animation, alpha, or tiling) carries the canvas size
+// directly, so we don't need to walk into the frame chunks that follow it.
+const VP8L_SIGNATURE = 0x2f;
+const VP8_START_CODE = Buffer.from([0x9d, 0x01, 0x2a]);
+
+function parseWebp(buf: Buffer): ImageMetadata {
+  if (buf.length < 20) {
+    throw new MalformedImageError('WEBP file is too short to contain a chunk header');
+  }
+  const fourCc = buf.toString('ascii', 12, 16);
+  const chunkSize = buf.readUInt32LE(16);
+  const payloadStart = 20;
+  if (payloadStart + chunkSize > buf.length) {
+    throw new MalformedImageError('WEBP chunk size runs past end of file');
+  }
+
+  if (fourCc === 'VP8X') {
+    if (chunkSize < 10) {
+      throw new MalformedImageError('VP8X chunk is too short to contain canvas dimensions');
+    }
+    const width = 1 + buf.readUIntLE(payloadStart + 4, 3);
+    const height = 1 + buf.readUIntLE(payloadStart + 7, 3);
+    return { format: 'webp', width, height };
+  }
+
+  if (fourCc === 'VP8L') {
+    if (chunkSize < 5 || buf[payloadStart] !== VP8L_SIGNATURE) {
+      throw new MalformedImageError('malformed VP8L chunk');
+    }
+    const bits = buf.readUInt32LE(payloadStart + 1);
+    const width = (bits & 0x3fff) + 1;
+    const height = ((bits >>> 14) & 0x3fff) + 1;
+    return { format: 'webp', width, height };
+  }
+
+  if (fourCc === 'VP8 ') {
+    if (chunkSize < 10 || !buf.subarray(payloadStart + 3, payloadStart + 6).equals(VP8_START_CODE)) {
+      throw new MalformedImageError('malformed VP8 chunk');
+    }
+    const width = buf.readUInt16LE(payloadStart + 6) & 0x3fff;
+    const height = buf.readUInt16LE(payloadStart + 8) & 0x3fff;
+    return { format: 'webp', width, height };
+  }
+
+  throw new MalformedImageError(`expected VP8X, VP8L or VP8 as the first chunk, found "${fourCc}"`);
 }
 
 // SOFn markers that actually carry frame dimensions. 0xC4, 0xC8 and 0xCC

@@ -68,6 +68,42 @@ function buildJpeg(width: number, height: number, opts: { app1?: Buffer } = {}):
   return Buffer.concat(segments);
 }
 
+function u32le(n: number): Buffer {
+  const b = Buffer.alloc(4);
+  b.writeUInt32LE(n, 0);
+  return b;
+}
+
+function buildRiff(fourCc: string, payload: Buffer): Buffer {
+  const padded = payload.length % 2 === 1 ? Buffer.concat([payload, Buffer.from([0])]) : payload;
+  const chunk = Buffer.concat([Buffer.from(fourCc, 'ascii'), u32le(payload.length), padded]);
+  const size = 4 + chunk.length; // "WEBP" + chunk
+  return Buffer.concat([Buffer.from('RIFF', 'ascii'), u32le(size), Buffer.from('WEBP', 'ascii'), chunk]);
+}
+
+function buildWebpVp8x(width: number, height: number): Buffer {
+  const payload = Buffer.alloc(10);
+  payload.writeUIntLE(width - 1, 4, 3);
+  payload.writeUIntLE(height - 1, 7, 3);
+  return buildRiff('VP8X', payload);
+}
+
+function buildWebpVp8l(width: number, height: number): Buffer {
+  const payload = Buffer.alloc(5);
+  payload[0] = 0x2f;
+  const bits = ((height - 1) << 14) | (width - 1);
+  payload.writeUInt32LE(bits >>> 0, 1);
+  return buildRiff('VP8L', payload);
+}
+
+function buildWebpVp8(width: number, height: number): Buffer {
+  const payload = Buffer.alloc(10);
+  payload.set([0x9d, 0x01, 0x2a], 3);
+  payload.writeUInt16LE(width, 6);
+  payload.writeUInt16LE(height, 8);
+  return buildRiff('VP8 ', payload);
+}
+
 interface Case {
   name: string;
   buf: Buffer;
@@ -100,6 +136,26 @@ const cases: Case[] = [
     name: 'JPEG with little-endian (II) EXIF orientation',
     buf: buildJpeg(100, 50, { app1: buildExifApp1(8, true) }),
     expect: { format: 'jpeg', width: 100, height: 50, orientation: 8 },
+  },
+  {
+    name: 'WebP extended format (VP8X) reports canvas size',
+    buf: buildWebpVp8x(400, 300),
+    expect: { format: 'webp', width: 400, height: 300 },
+  },
+  {
+    name: 'WebP lossless (VP8L)',
+    buf: buildWebpVp8l(17, 33),
+    expect: { format: 'webp', width: 17, height: 33 },
+  },
+  {
+    name: 'WebP lossy (VP8)',
+    buf: buildWebpVp8(640, 480),
+    expect: { format: 'webp', width: 640, height: 480 },
+  },
+  {
+    name: 'WebP RIFF container with an unrecognized first chunk',
+    buf: buildRiff('ANIM', Buffer.alloc(6)),
+    expectError: MalformedImageError,
   },
   {
     name: 'empty file',

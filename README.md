@@ -6,8 +6,8 @@ orientation out of image files, without pulling in an image library to do it.
 I keep needing this for one-off scripts: "is this upload actually portrait or
 did the phone just rotate it," "what resolution did this batch get exported
 at." Every time I've reached for a full image library to answer a two-field
-question. `imeta` parses just enough of the PNG and JPEG container formats to
-answer that question and nothing else.
+question. `imeta` parses just enough of the PNG, JPEG, and WebP container
+formats to answer that question and nothing else.
 
 ## Usage
 
@@ -43,6 +43,13 @@ arguments are wrong.
   `Exif\0\0` (a TIFF structure we walk to find the Orientation tag, tag
   `0x0112`). We stop as soon as we hit the start-of-scan marker, since actual
   pixel data follows and there's nothing left to read.
+- WebP: a RIFF container whose first chunk is one of `VP8X` (extended
+  header - width/height are stored directly, minus one, as 24-bit fields;
+  this is also what's present on animated or alpha WebPs), `VP8L` (lossless
+  - width/height minus one are packed into a 32-bit field starting right
+  after the `0x2f` signature byte), or `VP8 ` (lossy - width/height are
+  14-bit fields following the three-byte `0x9d012a` start code). There's no
+  EXIF orientation support for WebP yet.
 
 No image is ever decoded - only headers are touched, so this is safe and
 fast even on large files.
@@ -71,9 +78,10 @@ EXIF byte orders, files with no EXIF at all, and inputs that aren't images.
 
 ## Status
 
-Handles baseline PNG and JPEG. Not yet handled: progressive JPEG component
-count edge cases beyond SOF2, WebP, HEIC, GPS/timestamp EXIF fields, and
-multi-IFD EXIF blocks. See the issues for what's next.
+Handles baseline PNG, JPEG, and WebP dimensions. Not yet handled: progressive
+JPEG component count edge cases beyond SOF2, GIF, HEIC, WebP EXIF
+orientation, GPS/timestamp EXIF fields, and multi-IFD EXIF blocks. See the
+issues for what's next.
 
 ## License
 
