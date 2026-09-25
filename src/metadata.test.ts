@@ -74,6 +74,14 @@ function u32le(n: number): Buffer {
   return b;
 }
 
+function buildGif(width: number, height: number, version: '87a' | '89a' = '89a'): Buffer {
+  const buf = Buffer.alloc(6 + 7);
+  buf.write(`GIF${version}`, 0, 'ascii');
+  buf.writeUInt16LE(width, 6);
+  buf.writeUInt16LE(height, 8);
+  return buf;
+}
+
 function buildRiff(fourCc: string, payload: Buffer): Buffer {
   const padded = payload.length % 2 === 1 ? Buffer.concat([payload, Buffer.from([0])]) : payload;
   const chunk = Buffer.concat([Buffer.from(fourCc, 'ascii'), u32le(payload.length), padded]);
@@ -163,9 +171,19 @@ const cases: Case[] = [
     expectError: UnsupportedFormatError,
   },
   {
-    name: 'GIF signature is recognized but unsupported',
+    name: 'GIF89a logical screen descriptor',
+    buf: buildGif(320, 240, '89a'),
+    expect: { format: 'gif', width: 320, height: 240 },
+  },
+  {
+    name: 'GIF87a logical screen descriptor',
+    buf: buildGif(16, 16, '87a'),
+    expect: { format: 'gif', width: 16, height: 16 },
+  },
+  {
+    name: 'GIF cut off before the logical screen descriptor finishes',
     buf: Buffer.from('GIF89a', 'ascii'),
-    expectError: UnsupportedFormatError,
+    expectError: MalformedImageError,
   },
   {
     name: 'JPEG that ends right after SOI, no SOF ever arrives',

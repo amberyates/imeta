@@ -6,7 +6,7 @@ orientation out of image files, without pulling in an image library to do it.
 I keep needing this for one-off scripts: "is this upload actually portrait or
 did the phone just rotate it," "what resolution did this batch get exported
 at." Every time I've reached for a full image library to answer a two-field
-question. `imeta` parses just enough of the PNG, JPEG, and WebP container
+question. `imeta` parses just enough of the PNG, JPEG, WebP, and GIF container
 formats to answer that question and nothing else.
 
 ## Usage
@@ -50,6 +50,10 @@ arguments are wrong.
   after the `0x2f` signature byte), or `VP8 ` (lossy - width/height are
   14-bit fields following the three-byte `0x9d012a` start code). There's no
   EXIF orientation support for WebP yet.
+- GIF: width and height are the first two fields of the Logical Screen
+  Descriptor, right after the 6-byte `GIF87a`/`GIF89a` header - both
+  little-endian 16-bit, no need to touch the color table or any image
+  blocks that follow.
 
 No image is ever decoded - only headers are touched, so this is safe and
 fast even on large files.
@@ -78,8 +82,8 @@ EXIF byte orders, files with no EXIF at all, and inputs that aren't images.
 
 ## Status
 
-Handles baseline PNG, JPEG, and WebP dimensions. Not yet handled: progressive
-JPEG component count edge cases beyond SOF2, GIF, HEIC, WebP EXIF
+Handles baseline PNG, JPEG, WebP, and GIF dimensions. Not yet handled:
+progressive JPEG component count edge cases beyond SOF2, HEIC, WebP EXIF
 orientation, GPS/timestamp EXIF fields, and multi-IFD EXIF blocks. See the
 issues for what's next.
 

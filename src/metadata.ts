@@ -1,4 +1,4 @@
-export type ImageFormat = 'png' | 'jpeg' | 'webp';
+export type ImageFormat = 'png' | 'jpeg' | 'webp' | 'gif';
 
 export interface ImageMetadata {
   format: ImageFormat;
@@ -38,6 +38,13 @@ export function readImageMetadata(buf: Buffer): ImageMetadata {
   ) {
     return parseWebp(buf);
   }
+  if (
+    buf.length >= 6 &&
+    buf.toString('ascii', 0, 3) === 'GIF' &&
+    (buf.toString('ascii', 3, 6) === '87a' || buf.toString('ascii', 3, 6) === '89a')
+  ) {
+    return parseGif(buf);
+  }
   throw new UnsupportedFormatError();
 }
 
@@ -55,6 +62,20 @@ function parsePng(buf: Buffer): ImageMetadata {
     format: 'png',
     width: buf.readUInt32BE(16),
     height: buf.readUInt32BE(20),
+  };
+}
+
+// The Logical Screen Descriptor follows the 6-byte "GIF87a"/"GIF89a" header
+// directly: width and height are the first two fields, both little-endian
+// 16-bit, so there's no need to walk into the color table or image blocks.
+function parseGif(buf: Buffer): ImageMetadata {
+  if (buf.length < 6 + 7) {
+    throw new MalformedImageError('GIF file is too short to contain a logical screen descriptor');
+  }
+  return {
+    format: 'gif',
+    width: buf.readUInt16LE(6),
+    height: buf.readUInt16LE(8),
   };
 }
 
