@@ -39,6 +39,12 @@ function main(argv: string[]): void {
       if (meta.orientation !== undefined) {
         process.stdout.write(`orientation: ${meta.orientation}\n`);
       }
+      if (meta.dateTime !== undefined) {
+        process.stdout.write(`taken:       ${meta.dateTime}\n`);
+      }
+      if (meta.gps !== undefined) {
+        process.stdout.write(`gps:         ${meta.gps.latitude.toFixed(6)}, ${meta.gps.longitude.toFixed(6)}\n`);
+      }
     }
   } catch (err) {
     if (err instanceof UnsupportedFormatError || err instanceof MalformedImageError) {

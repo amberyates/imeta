@@ -17,6 +17,8 @@ format:      jpeg
 width:       4032
 height:      3024
 orientation: 6
+taken:       2023:07:14 09:30:05
+gps:         40.510000, -73.750000
 
 $ imeta icon.png
 format:      png
@@ -28,7 +30,9 @@ $ imeta --json photo.jpg
 ```
 
 `orientation` is only printed when the file actually carries an EXIF
-orientation tag - most PNGs and many JPEGs won't have one.
+orientation tag - most PNGs and many JPEGs won't have one. `taken` (EXIF
+DateTimeOriginal, falling back to DateTime) and `gps` (decimal degrees) follow
+the same rule. The timestamp is printed as stored; EXIF has no time zone.
 
 Exit code is `1` if the file can't be read or isn't a PNG/JPEG, `2` if the
 arguments are wrong.
@@ -84,7 +88,7 @@ EXIF byte orders, files with no EXIF at all, and inputs that aren't images.
 
 Handles baseline PNG, JPEG, WebP, and GIF dimensions. Not yet handled:
 progressive JPEG component count edge cases beyond SOF2, HEIC, WebP EXIF
-orientation, GPS/timestamp EXIF fields, and multi-IFD EXIF blocks. See the
+orientation, and the thumbnail IFD (IFD1). See the
 issues for what's next.
 
 ## License

@@ -48,6 +48,57 @@ function buildExifApp1(orientation: number, littleEndian: boolean): Buffer {
   return Buffer.concat([Buffer.from('Exif\0\0', 'ascii'), tiff]);
 }
 
+// Little-endian TIFF with IFD0 (orientation, Exif pointer, GPS pointer), an
+// Exif IFD holding DateTimeOriginal, and a GPS IFD with lat/lon rationals.
+function buildFullExifApp1(opts: { latRef: string; lonRef: string; zeroDenominator?: boolean }): Buffer {
+  const ifd0 = 8;
+  const exifIfd = ifd0 + 2 + 3 * 12 + 4;
+  const gpsIfd = exifIfd + 2 + 12 + 4;
+  const dateAt = gpsIfd + 2 + 4 * 12 + 4;
+  const latAt = dateAt + 20;
+  const lonAt = latAt + 24;
+  const tiff = Buffer.alloc(lonAt + 24);
+
+  tiff.write('II', 0, 'ascii');
+  tiff.writeUInt16LE(42, 2);
+  tiff.writeUInt32LE(ifd0, 4);
+
+  const entry = (at: number, tag: number, type: number, count: number, value: number | string) => {
+    tiff.writeUInt16LE(tag, at);
+    tiff.writeUInt16LE(type, at + 2);
+    tiff.writeUInt32LE(count, at + 4);
+    if (typeof value === 'string') tiff.write(value, at + 8, 'ascii');
+    else if (type === 3) tiff.writeUInt16LE(value, at + 8);
+    else tiff.writeUInt32LE(value, at + 8);
+  };
+
+  tiff.writeUInt16LE(3, ifd0);
+  entry(ifd0 + 2, 0x0112, 3, 1, 3);
+  entry(ifd0 + 14, 0x8769, 4, 1, exifIfd);
+  entry(ifd0 + 26, 0x8825, 4, 1, gpsIfd);
+
+  tiff.writeUInt16LE(1, exifIfd);
+  entry(exifIfd + 2, 0x9003, 2, 20, dateAt);
+  tiff.write('2023:07:14 09:30:05', dateAt, 'ascii');
+
+  tiff.writeUInt16LE(4, gpsIfd);
+  entry(gpsIfd + 2, 0x0001, 2, 2, opts.latRef);
+  entry(gpsIfd + 14, 0x0002, 5, 3, latAt);
+  entry(gpsIfd + 26, 0x0003, 2, 2, opts.lonRef);
+  entry(gpsIfd + 38, 0x0004, 5, 3, lonAt);
+
+  const rationals = (at: number, deg: number, min: number, sec: number) => {
+    [deg, min, sec].forEach((n, i) => {
+      tiff.writeUInt32LE(n, at + i * 8);
+      tiff.writeUInt32LE(opts.zeroDenominator ? 0 : 1, at + i * 8 + 4);
+    });
+  };
+  rationals(latAt, 40, 30, 36); // 40.51
+  rationals(lonAt, 73, 45, 0); // 73.75
+
+  return Buffer.concat([Buffer.from('Exif\0\0', 'ascii'), tiff]);
+}
+
 function buildJpeg(width: number, height: number, opts: { app1?: Buffer } = {}): Buffer {
   const segments: Buffer[] = [Buffer.from([0xff, 0xd8])]; // SOI
 
@@ -191,6 +242,37 @@ const cases: Case[] = [
     expectError: MalformedImageError,
   },
 ];
+
+test('EXIF timestamp and GPS from the nested Exif and GPS IFDs', () => {
+  const app1 = buildFullExifApp1({ latRef: 'N', lonRef: 'E' });
+  const meta = readImageMetadata(buildJpeg(64, 48, { app1 }));
+  assert.equal(meta.orientation, 3);
+  assert.equal(meta.dateTime, '2023:07:14 09:30:05');
+  assert.ok(meta.gps);
+  assert.ok(Math.abs(meta.gps.latitude - 40.51) < 1e-9);
+  assert.ok(Math.abs(meta.gps.longitude - 73.75) < 1e-9);
+});
+
+test('southern and western GPS references flip the sign', () => {
+  const app1 = buildFullExifApp1({ latRef: 'S', lonRef: 'W' });
+  const meta = readImageMetadata(buildJpeg(64, 48, { app1 }));
+  assert.ok(meta.gps);
+  assert.ok(meta.gps.latitude < 0);
+  assert.ok(meta.gps.longitude < 0);
+});
+
+test('GPS rationals with a zero denominator are dropped, other fields kept', () => {
+  const app1 = buildFullExifApp1({ latRef: 'N', lonRef: 'E', zeroDenominator: true });
+  const meta = readImageMetadata(buildJpeg(64, 48, { app1 }));
+  assert.equal(meta.gps, undefined);
+  assert.equal(meta.dateTime, '2023:07:14 09:30:05');
+});
+
+test('JPEG with only an orientation tag has no timestamp or GPS', () => {
+  const meta = readImageMetadata(buildJpeg(10, 10, { app1: buildExifApp1(1, true) }));
+  assert.equal(meta.dateTime, undefined);
+  assert.equal(meta.gps, undefined);
+});
 
 for (const c of cases) {
   test(c.name, () => {
